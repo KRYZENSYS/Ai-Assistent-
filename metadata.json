@@ -1,0 +1,6 @@
+{
+  "name": "AI Call Assistant",
+  "description": "Production-ready Cyberpunk AI Call Assistant featuring real-time call tracking, local database logging, advanced custom Speech-to-Text and Text-to-Speech simulation, and multi-language AI processing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
