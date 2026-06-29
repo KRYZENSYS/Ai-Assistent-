@@ -2,9 +2,11 @@ package com.example.ui
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -13,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
@@ -36,7 +39,13 @@ fun SettingsScreen(
     val scrollState = rememberScrollState()
 
     // Retrieve live preference states from ViewModel
-    val apiKeyVal by viewModel.apiKey.collectAsState()
+    val aiProviderVal by viewModel.aiProvider.collectAsState()
+    val aiModelVal by viewModel.aiModel.collectAsState()
+    val groqKeyVal by viewModel.groqApiKey.collectAsState()
+    val geminiKeyVal by viewModel.geminiApiKey.collectAsState()
+    val openaiKeyVal by viewModel.openaiApiKey.collectAsState()
+    val openrouterKeyVal by viewModel.openrouterApiKey.collectAsState()
+
     val systemPromptVal by viewModel.systemPrompt.collectAsState()
     val speechLangVal by viewModel.speechLanguage.collectAsState()
     val speechVolVal by viewModel.speechVolume.collectAsState()
@@ -44,7 +53,13 @@ fun SettingsScreen(
     val batterySavingVal by viewModel.batterySavingMode.collectAsState()
 
     // Local state for edits
-    var localKey by remember(apiKeyVal) { mutableStateOf(apiKeyVal) }
+    var localProvider by remember(aiProviderVal) { mutableStateOf(aiProviderVal) }
+    var localModel by remember(aiModelVal) { mutableStateOf(aiModelVal) }
+    var localGroqKey by remember(groqKeyVal) { mutableStateOf(groqKeyVal) }
+    var localGeminiKey by remember(geminiKeyVal) { mutableStateOf(geminiKeyVal) }
+    var localOpenaiKey by remember(openaiKeyVal) { mutableStateOf(openaiKeyVal) }
+    var localOpenrouterKey by remember(openrouterKeyVal) { mutableStateOf(openrouterKeyVal) }
+
     var localPrompt by remember(systemPromptVal) { mutableStateOf(systemPromptVal) }
     var localLang by remember(speechLangVal) { mutableStateOf(speechLangVal) }
     var localVol by remember(speechVolVal) { mutableStateOf(speechVolVal) }
@@ -67,25 +82,93 @@ fun SettingsScreen(
             subtitle = "Suhbat tizimi va ovoz sinxronizatsiyasi"
         )
 
-        // SECTION 1: SECURE API CREDENTIALS
+        // SECTION 1: AI PROVIDER & API KEY CONFIGURATION
         CyberCard(modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "GROQ API KEY CONFIGURATION",
+                    text = "AI PROVIDER SELECTOR",
                     color = MaterialTheme.colorScheme.primary,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
                     letterSpacing = 1.sp
                 )
-                
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf(
+                        "groq" to "GROQ",
+                        "gemini" to "GEMINI",
+                        "openai" to "OPENAI",
+                        "openrouter" to "OPENROUTER"
+                    ).forEach { (providerId, label) ->
+                        val isSelected = localProvider == providerId
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant)
+                                .border(
+                                    width = 1.dp,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                    shape = RoundedCornerShape(4.dp)
+                                )
+                                .clickable { 
+                                    localProvider = providerId
+                                    // Switch local model defaults to keep layout clean
+                                    localModel = when (providerId) {
+                                        "gemini" -> "gemini-3.5-flash"
+                                        "openai" -> "gpt-4o-mini"
+                                        "openrouter" -> "google/gemini-2.5-flash"
+                                        else -> "llama-3.3-70b-versatile"
+                                    }
+                                }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Render matching secure API Key input
+                val labelText = when (localProvider) {
+                    "gemini" -> "Gemini API Kaliti (GEMINI_API_KEY)"
+                    "openai" -> "OpenAI API Kaliti (OPENAI_API_KEY)"
+                    "openrouter" -> "OpenRouter API Kaliti (OPENROUTER_API_KEY)"
+                    else -> "Groq API Kaliti (GROQ_API_KEY)"
+                }
+
+                val currentKeyValue = when (localProvider) {
+                    "gemini" -> localGeminiKey
+                    "openai" -> localOpenaiKey
+                    "openrouter" -> localOpenrouterKey
+                    else -> localGroqKey
+                }
+
                 OutlinedTextField(
-                    value = localKey,
-                    onValueChange = { localKey = it },
-                    label = { Text("Groq API Kaliti (GROQ_API_KEY)", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)) },
+                    value = currentKeyValue,
+                    onValueChange = { newValue ->
+                        when (localProvider) {
+                            "gemini" -> localGeminiKey = newValue
+                            "openai" -> localOpenaiKey = newValue
+                            "openrouter" -> localOpenrouterKey = newValue
+                            else -> localGroqKey = newValue
+                        }
+                    },
+                    label = { Text(labelText, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)) },
                     textStyle = TextStyle(color = MaterialTheme.colorScheme.onBackground, fontFamily = FontFamily.Monospace),
                     visualTransformation = if (isKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -106,8 +189,72 @@ fun SettingsScreen(
                     singleLine = true
                 )
 
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Render dynamic model configuration
                 Text(
-                    text = "Diqqat: API kalitingiz shifrlangan holda xavfsiz SharedPreferences'da saqlanadi va bevosita Groq Chat Completions API serveriga yuboriladi.",
+                    text = "ACTIVE MODEL CONFIGURATION",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    letterSpacing = 1.sp
+                )
+
+                // Recommended model preset buttons
+                val presets = when (localProvider) {
+                    "gemini" -> listOf("gemini-3.5-flash", "gemini-3.1-pro-preview")
+                    "openai" -> listOf("gpt-4o-mini", "gpt-4o")
+                    "openrouter" -> listOf("google/gemini-2.5-flash", "meta-llama/llama-3.3-70b-instruct")
+                    else -> listOf("llama-3.3-70b-versatile", "llama3-8b-8192", "mixtral-8x7b-32768")
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    presets.forEach { presetName ->
+                        val isPresetSelected = localModel == presetName
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .background(if (isPresetSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant)
+                                .border(
+                                    width = 1.dp,
+                                    color = if (isPresetSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                    shape = RoundedCornerShape(4.dp)
+                                )
+                                .clickable { localModel = presetName }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = presetName.take(18),
+                                color = if (isPresetSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+
+                // Custom Model Name Input Field
+                OutlinedTextField(
+                    value = localModel,
+                    onValueChange = { localModel = it },
+                    label = { Text("Custom model nomi (tanlash yoki yozish)", color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)) },
+                    textStyle = TextStyle(color = MaterialTheme.colorScheme.onBackground, fontFamily = FontFamily.Monospace),
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.2f)
+                    ),
+                    singleLine = true
+                )
+
+                Text(
+                    text = "Diqqat: API kalitlaringiz AES-GCM shifrlash orqali Android Keystore'da xavfsiz saqlanadi va bevosita tanlangan provayder API serveriga yuboriladi.",
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
                     fontSize = 10.sp
                 )
@@ -306,7 +453,12 @@ fun SettingsScreen(
                 text = "Sozlamalarni saqlash",
                 onClick = {
                     viewModel.saveSettings(
-                        key = localKey,
+                        provider = localProvider,
+                        model = localModel,
+                        groqKey = localGroqKey,
+                        geminiKey = localGeminiKey,
+                        openaiKey = localOpenaiKey,
+                        openrouterKey = localOpenrouterKey,
                         prompt = localPrompt,
                         lang = localLang,
                         vol = localVol,

@@ -36,7 +36,15 @@ class CallAssistantService : Service() {
         super.onCreate()
         AppLogger.i(TAG, "Foreground Service creating")
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification("AI Call monitoring is active"))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                buildNotification("AI Call monitoring is active"),
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification("AI Call monitoring is active"))
+        }
         registerCallReceiver()
         isRunning.value = true
     }

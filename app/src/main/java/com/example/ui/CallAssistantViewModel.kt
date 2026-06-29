@@ -64,6 +64,13 @@ class CallAssistantViewModel(application: Application) : AndroidViewModel(applic
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Settings Parameters
+    val aiProvider = MutableStateFlow(repository.aiProvider)
+    val aiModel = MutableStateFlow(repository.aiModel)
+    val groqApiKey = MutableStateFlow(repository.getApiKeyForProvider("groq"))
+    val geminiApiKey = MutableStateFlow(repository.getApiKeyForProvider("gemini"))
+    val openaiApiKey = MutableStateFlow(repository.getApiKeyForProvider("openai"))
+    val openrouterApiKey = MutableStateFlow(repository.getApiKeyForProvider("openrouter"))
+
     val aiModeEnabled = MutableStateFlow(repository.aiModeEnabled)
     val systemPrompt = MutableStateFlow(repository.systemPrompt)
     val speechLanguage = MutableStateFlow(repository.speechLanguage)
@@ -141,9 +148,14 @@ class CallAssistantViewModel(application: Application) : AndroidViewModel(applic
     }
 
     // --- SETTINGS MANAGEMENT ---
-
+    
     fun saveSettings(
-        key: String,
+        provider: String,
+        model: String,
+        groqKey: String,
+        geminiKey: String,
+        openaiKey: String,
+        openrouterKey: String,
         prompt: String,
         lang: String,
         vol: Float,
@@ -151,14 +163,33 @@ class CallAssistantViewModel(application: Application) : AndroidViewModel(applic
         batterySave: Boolean
     ) {
         viewModelScope.launch {
-            repository.saveApiKey(key)
+            repository.aiProvider = provider
+            repository.aiModel = model
+            repository.saveApiKeyForProvider(groqKey, "groq")
+            repository.saveApiKeyForProvider(geminiKey, "gemini")
+            repository.saveApiKeyForProvider(openaiKey, "openai")
+            repository.saveApiKeyForProvider(openrouterKey, "openrouter")
+            
             repository.systemPrompt = prompt
             repository.speechLanguage = lang
             repository.speechVolume = vol
             repository.speechRate = rate
             repository.batterySavingMode = batterySave
 
-            apiKey.value = key
+            aiProvider.value = provider
+            aiModel.value = model
+            groqApiKey.value = groqKey
+            geminiApiKey.value = geminiKey
+            openaiApiKey.value = openaiKey
+            openrouterApiKey.value = openrouterKey
+            
+            apiKey.value = when (provider) {
+                "gemini" -> geminiKey
+                "openai" -> openaiKey
+                "openrouter" -> openrouterKey
+                else -> groqKey
+            }
+            
             systemPrompt.value = prompt
             speechLanguage.value = lang
             speechVolume.value = vol
@@ -172,6 +203,12 @@ class CallAssistantViewModel(application: Application) : AndroidViewModel(applic
     fun resetSettings() {
         viewModelScope.launch {
             repository.clearPreferences()
+            aiProvider.value = "groq"
+            aiModel.value = "llama-3.3-70b-versatile"
+            groqApiKey.value = ""
+            geminiApiKey.value = ""
+            openaiApiKey.value = ""
+            openrouterApiKey.value = ""
             apiKey.value = ""
             systemPrompt.value = repository.systemPrompt
             speechLanguage.value = "auto"

@@ -100,46 +100,81 @@ class CallAssistantRepository(private val context: Context) {
         get() = prefs.batterySavingMode
         set(value) { prefs.batterySavingMode = value }
 
+    var aiProvider: String
+        get() = prefs.aiProvider
+        set(value) { prefs.aiProvider = value }
+
+    var aiModel: String
+        get() = prefs.aiModel
+        set(value) { prefs.aiModel = value }
+
+    fun getApiKeyForProvider(provider: String): String = prefs.getApiKeyForProvider(provider)
+    fun saveApiKeyForProvider(key: String, provider: String) { prefs.saveApiKeyForProvider(key, provider) }
+
     fun getApiKey(): String = prefs.getApiKey()
     fun saveApiKey(key: String) { prefs.saveApiKey(key) }
     fun clearPreferences() { prefs.clearAll() }
 
-    // Lazy initialization of GroqApiService to prevent network crash if API is not invoked
-    private val groqApiService: GroqApiService by lazy {
+    private fun getApiServiceForProvider(provider: String): GroqApiService {
+        val baseUrl = when (provider) {
+            "openai" -> "https://api.openai.com/v1/"
+            "openrouter" -> "https://openrouter.ai/api/v1/"
+            "gemini" -> "https://generativelanguage.googleapis.com/v1beta/openai/"
+            else -> "https://api.groq.com/openai/v1/"
+        }
+        
         val loggingInterceptor = HttpLoggingInterceptor { message ->
-            AppLogger.d("OkHttp", message)
+            // Scrub authorization header and API keys from logs to prevent leaks
+            val scrubbed = if (message.contains("Authorization: Bearer") || message.contains("api.groq.com") || message.contains("api_key")) {
+                "Authorization: Bearer [REDACTED_FOR_SECURITY]"
+            } else {
+                message
+            }
+            AppLogger.d("OkHttp", scrubbed)
         }.setLevel(HttpLoggingInterceptor.Level.BODY)
 
         val okHttpClient = OkHttpClient.Builder()
             .addInterceptor(loggingInterceptor)
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .writeTimeout(15, TimeUnit.SECONDS)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
             .build()
 
         val moshi = Moshi.Builder()
             .addLast(KotlinJsonAdapterFactory())
             .build()
 
-        Retrofit.Builder()
-            .baseUrl("https://api.groq.com/openai/v1/")
+        return Retrofit.Builder()
+            .baseUrl(baseUrl)
             .client(okHttpClient)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
             .create(GroqApiService::class.java)
     }
 
-    // Call Groq completions API
     suspend fun getGroqCompletion(
         userMessage: String,
         history: List<GroqMessage> = emptyList(),
-        customModel: String = MODEL_LLAMA3_8B
+        customModel: String = ""
     ): String {
-        val apiKey = getApiKey()
+        val provider = aiProvider
+        val apiKey = getApiKeyForProvider(provider)
         if (apiKey.isBlank()) {
-            val errorMsg = "Groq API kaliti sozlanmagan! Iltimos Sozlamalar bo'limida kiriting."
+            val errorMsg = when (provider) {
+                "gemini" -> "Gemini API kaliti sozlanmagan! Iltimos Sozlamalar bo'limida kiriting."
+                "openai" -> "OpenAI API kaliti sozlanmagan! Iltimos Sozlamalar bo'limida kiriting."
+                "openrouter" -> "OpenRouter API kaliti sozlanmagan! Iltimos Sozlamalar bo'limida kiriting."
+                else -> "Groq API kaliti sozlanmagan! Iltimos Sozlamalar bo'limida kiriting."
+            }
             AppLogger.e(TAG, errorMsg)
             throw IllegalStateException(errorMsg)
+        }
+
+        val modelToUse = if (customModel.isNotBlank()) {
+            customModel
+        } else {
+            aiModel
         }
 
         val messages = mutableListOf<GroqMessage>()
@@ -148,29 +183,44 @@ class CallAssistantRepository(private val context: Context) {
         messages.add(GroqMessage(role = "user", content = userMessage))
 
         val request = GroqChatRequest(
-            model = customModel,
+            model = modelToUse,
             messages = messages,
             temperature = 0.7,
             stream = false
         )
 
-        AppLogger.i(TAG, "Requesting Groq chat completions using model: $customModel")
+        AppLogger.i(TAG, "Requesting AI completions using $provider model: $modelToUse")
         val authHeader = "Bearer $apiKey"
         
-        return try {
-            val response = groqApiService.getChatCompletions(authHeader, request)
-            val reply = response.choices.firstOrNull()?.message?.content
-            if (reply != null) {
-                AppLogger.d(TAG, "Groq response success: ${reply.take(50)}...")
-                reply
-            } else {
-                val errorMsg = "API bo'sh javob qaytardi."
-                AppLogger.e(TAG, errorMsg)
-                throw Exception(errorMsg)
+        var retryCount = 0
+        val maxRetries = 2
+        var lastException: Exception? = null
+        
+        while (retryCount <= maxRetries) {
+            try {
+                val service = getApiServiceForProvider(provider)
+                val response = service.getChatCompletions(authHeader, request)
+                val reply = response.choices.firstOrNull()?.message?.content
+                if (reply != null) {
+                    AppLogger.d(TAG, "$provider response success: ${reply.take(50)}...")
+                    return reply
+                } else {
+                    val errorMsg = "API bo'sh javob qaytardi."
+                    AppLogger.e(TAG, errorMsg)
+                    throw Exception(errorMsg)
+                }
+            } catch (e: Exception) {
+                lastException = e
+                retryCount++
+                if (retryCount <= maxRetries) {
+                    AppLogger.w(TAG, "API Call failed, retrying ($retryCount/$maxRetries)... Error: ${e.localizedMessage}")
+                    kotlinx.coroutines.delay(1000L * retryCount)
+                }
             }
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Groq API Call failed: ${e.localizedMessage}", e)
-            throw e
         }
+        
+        val finalError = lastException ?: Exception("Noma'lum xato aloqada")
+        AppLogger.e(TAG, "All retries failed for $provider API: ${finalError.localizedMessage}", finalError)
+        throw finalError
     }
 }
